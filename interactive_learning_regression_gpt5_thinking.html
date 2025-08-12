@@ -1,0 +1,581 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ReferenceLine,
+  AreaChart,
+  Area
+} from "recharts";
+import { RefreshCcw, Play, Square, Sparkles, Shuffle, RotateCcw, Settings, BarChart3, Sliders, Layers, Zap, GitCommitVertical } from "lucide-react";
+
+// ---------- Helpers ----------
+function randn() {
+  // Box–Muller
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+function mean(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function variance(arr) {
+  const m = mean(arr);
+  return arr.reduce((s, x) => s + (x - m) * (x - m), 0) / arr.length;
+}
+
+function covariance(x, y) {
+  const mx = mean(x), my = mean(y);
+  let s = 0;
+  for (let i = 0; i < x.length; i++) s += (x[i] - mx) * (y[i] - my);
+  return s / x.length;
+}
+
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+// Closed-form OLS (with optional simple ridge on slope only)
+function fitOLSXY(x, y, lambda = 0) {
+  const mx = mean(x), my = mean(y);
+  const cov = covariance(x, y);
+  const varx = variance(x);
+  // We do not penalize intercept. Simple ridge on slope: m = cov / (varx + lambda)
+  const m = cov / (varx + lambda);
+  const b = my - m * mx;
+  return { m, b };
+}
+
+function mseFor(data, m, b) {
+  if (!data.length) return 0;
+  let s = 0;
+  for (const d of data) {
+    const e = m * d.x + b - d.y;
+    s += e * e;
+  }
+  return s / data.length;
+}
+
+function r2For(data, m, b) {
+  if (!data.length) return 0;
+  const y = data.map((d) => d.y);
+  const yhat = data.map((d) => m * d.x + b);
+  const ssRes = y.reduce((s, yi, i) => s + (yi - yhat[i]) ** 2, 0);
+  const ybar = mean(y);
+  const ssTot = y.reduce((s, yi) => s + (yi - ybar) ** 2, 0);
+  return 1 - ssRes / (ssTot || 1e-9);
+}
+
+// Gradient of MSE (plus optional ridge on slope)
+function gradStep(data, m, b, lr, lambda = 0) {
+  if (!data.length) return { m, b, dJdm: 0, dJdb: 0, J: 0 };
+  const n = data.length;
+  let dJdm = 0, dJdb = 0, J = 0;
+  for (const d of data) {
+    const e = m * d.x + b - d.y;
+    dJdm += e * d.x;
+    dJdb += e;
+    J += e * e;
+  }
+  // Average, ridge on slope only
+  dJdm = (2 / n) * dJdm + 2 * lambda * m;
+  dJdb = (2 / n) * dJdb;
+  J = J / n + lambda * m * m;
+  const m2 = m - lr * dJdm;
+  const b2 = b - lr * dJdb;
+  return { m: m2, b: b2, dJdm, dJdb, J };
+}
+
+function genData({ n, mTrue, bTrue, noise, minX, maxX, withOutliers = false }) {
+  const data = [];
+  for (let i = 0; i < n; i++) {
+    const x = minX + Math.random() * (maxX - minX);
+    const y = mTrue * x + bTrue + randn() * noise;
+    data.push({ x, y });
+  }
+  if (withOutliers) {
+    for (let k = 0; k < Math.max(2, Math.round(n * 0.05)); k++) {
+      const x = minX + Math.random() * (maxX - minX);
+      const y = mTrue * x + bTrue + (Math.random() < 0.5 ? 12 : -12) * noise;
+      data.push({ x, y });
+    }
+  }
+  // Keep size reasonable
+  return data.slice(0, 300);
+}
+
+// Map residual magnitude to 5 discrete bins for coloring
+function binResiduals(data, m, b) {
+  const errors = data.map((d) => Math.abs(m * d.x + b - d.y));
+  const maxE = Math.max(1e-6, ...errors);
+  return data.map((d, i) => ({ ...d, bin: Math.min(4, Math.floor((errors[i] / maxE) * 5)) }));
+}
+
+const colorBins = ["#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8"]; // light → dark
+
+// ---------- UI Atoms ----------
+function Section({ title, icon, children, right }) {
+  const Icon = icon ?? Sparkles;
+  return (
+    <div className="rounded-2xl bg-white/70 backdrop-blur border border-slate-200 shadow-sm p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Icon className="w-5 h-5 text-slate-700" />
+          <h3 className="font-semibold text-slate-800">{title}</h3>
+        </div>
+        <div>{right}</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SliderRow({ label, value, min, max, step = 1, onChange, suffix }) {
+  return (
+    <div className="grid grid-cols-12 items-center gap-3 py-1">
+      <div className="col-span-4 text-sm text-slate-600">{label}</div>
+      <input
+        type="range"
+        className="col-span-6 accent-blue-600"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <div className="col-span-2 text-right text-sm font-medium text-slate-800">
+        {value.toFixed(2)}{suffix || ""}
+      </div>
+    </div>
+  );
+}
+
+function Pill({ children }) {
+  return (
+    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs">
+      {children}
+    </span>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="text-lg font-semibold text-slate-800">{value}</div>
+    </div>
+  );
+}
+
+// ---------- Main Component ----------
+export default function LinearRegressionLab() {
+  // Playground state
+  const [n, setN] = useState(80);
+  const [minX, setMinX] = useState(-5);
+  const [maxX, setMaxX] = useState(5);
+  const [mTrue, setMTrue] = useState(1.5);
+  const [bTrue, setBTrue] = useState(2);
+  const [noise, setNoise] = useState(1.0);
+  const [withOutliers, setWithOutliers] = useState(false);
+  const [seed, setSeed] = useState(0);
+
+  // Fitting state
+  const [lambda, setLambda] = useState(0);
+  const [manualM, setManualM] = useState(0.5);
+  const [manualB, setManualB] = useState(0);
+
+  // Gradient descent
+  const [gdM, setGdM] = useState(0);
+  const [gdB, setGdB] = useState(0);
+  const [lr, setLr] = useState(0.05);
+  const [gdIter, setGdIter] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [lossHistory, setLossHistory] = useState([]);
+  const timerRef = useRef(null);
+
+  // Train/Test
+  const [split, setSplit] = useState(0.8);
+
+  // Data generation (seeded by tweaking Math.random via advance steps)
+  const data = useMemo(() => {
+    // Crude seeding: run Math.random a deterministic number of times
+    const spins = seed % 997;
+    for (let i = 0; i < spins; i++) Math.random();
+    return genData({ n, mTrue, bTrue, noise, minX, maxX, withOutliers });
+  }, [n, mTrue, bTrue, noise, minX, maxX, seed, withOutliers]);
+
+  const x = useMemo(() => data.map((d) => d.x), [data]);
+  const y = useMemo(() => data.map((d) => d.y), [data]);
+
+  // OLS fits
+  const ols = useMemo(() => fitOLSXY(x, y, lambda), [x, y, lambda]);
+
+  // Train/Test split (by shuffled index for stability per seed)
+  const { train, test } = useMemo(() => {
+    const idx = [...data.keys()];
+    shuffleInPlace(idx);
+    const k = Math.floor(split * idx.length);
+    const trainIdx = idx.slice(0, k);
+    const testIdx = idx.slice(k);
+    return {
+      train: trainIdx.map((i) => data[i]),
+      test: testIdx.map((i) => data[i])
+    };
+  }, [data, split]);
+
+  const olsTrain = useMemo(() => fitOLSXY(train.map(d => d.x), train.map(d => d.y), lambda), [train, lambda]);
+  const trainMSE = useMemo(() => mseFor(train, olsTrain.m, olsTrain.b), [train, olsTrain]);
+  const testMSE = useMemo(() => mseFor(test, olsTrain.m, olsTrain.b), [test, olsTrain]);
+
+  // Residual color-binned data for the manual fit
+  const manualBinned = useMemo(() => binResiduals(data, manualM, manualB), [data, manualM, manualB]);
+
+  // Loss landscape vs slope m, with b*(m) that minimizes loss for given m
+  const [mMin, setMMin] = useState(-4);
+  const [mMax, setMMax] = useState(4);
+  const landscape = useMemo(() => {
+    const mx = mean(x), my = mean(y);
+    const pts = [];
+    const steps = 101;
+    for (let i = 0; i < steps; i++) {
+      const m = mMin + (i / (steps - 1)) * (mMax - mMin);
+      const bStar = my - m * mx; // optimum b for given m (no penalty on b)
+      const J = mseFor(data, m, bStar) + lambda * m * m;
+      pts.push({ m, J });
+    }
+    return pts;
+  }, [data, x, y, mMin, mMax, lambda]);
+
+  // GD controls
+  function stepGD(times = 1) {
+    let m = gdM, b = gdB;
+    let hist = [];
+    for (let i = 0; i < times; i++) {
+      const r = gradStep(data, m, b, lr, lambda);
+      m = r.m; b = r.b; hist.push(r.J);
+    }
+    setGdM(m); setGdB(b); setGdIter((s) => s + times);
+    setLossHistory((prev) => [...prev, ...hist].slice(-400));
+  }
+
+  useEffect(() => {
+    if (isRunning) {
+      timerRef.current = setInterval(() => stepGD(1), 30);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isRunning, data, lr, lambda]);
+
+  // ---------- Charts Data ----------
+  const linePoints = useMemo(() => {
+    const steps = 50;
+    const pts = [];
+    const lo = Math.min(...x, minX) - 0.5;
+    const hi = Math.max(...x, maxX) + 0.5;
+    for (let i = 0; i < steps; i++) {
+      const xv = lo + (i / (steps - 1)) * (hi - lo);
+      pts.push({
+        x: xv,
+        true: mTrue * xv + bTrue,
+        manual: manualM * xv + manualB,
+        ols: ols.m * xv + ols.b,
+        gd: gdM * xv + gdB,
+      });
+    }
+    return pts;
+  }, [x, minX, maxX, mTrue, bTrue, manualM, manualB, ols, gdM, gdB]);
+
+  const manualMSE = mseFor(data, manualM, manualB).toFixed(3);
+  const manualR2 = r2For(data, manualM, manualB).toFixed(3);
+  const olsMSE = mseFor(data, ols.m, ols.b).toFixed(3);
+  const olsR2 = r2For(data, ols.m, ols.b).toFixed(3);
+  const gdMSE = mseFor(data, gdM, gdB).toFixed(3);
+  const gdR2 = r2For(data, gdM, gdB).toFixed(3);
+
+  // ---------- Quiz ----------
+  const questions = [
+    {
+      q: "Which line minimizes Mean Squared Error (MSE) on a dataset, ignoring regularization?",
+      options: [
+        "Any line that passes through the origin",
+        "The line from gradient descent after 1 step",
+        "The ordinary least squares (OLS) fit",
+        "The line with the largest R²"
+      ],
+      a: 2
+    },
+    {
+      q: "Ridge regression with λ > 0 primarily does what (in this demo)?",
+      options: [
+        "Penalizes the slope, shrinking it toward 0",
+        "Penalizes the intercept only",
+        "Adds more data points",
+        "Guarantees perfect predictions"
+      ],
+      a: 0
+    },
+    {
+      q: "Setting the learning rate too high in gradient descent often leads to…",
+      options: [
+        "Faster and stable convergence",
+        "Divergence or oscillations",
+        "No effect at all",
+        "Exactly the OLS solution in one step"
+      ],
+      a: 1
+    }
+  ];
+  const [answers, setAnswers] = useState(Array(questions.length).fill(null));
+
+  // ---------- UI ----------
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-800">
+      <div className="max-w-7xl mx-auto px-5 py-6">
+        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Linear Regression Lab</h1>
+            <p className="text-slate-600">Interactive playground to learn the core concepts: data, loss, OLS, residuals, gradient descent, regularization, and evaluation.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 shadow"
+              onClick={() => { setSeed((s) => s + 1); }}
+              title="Randomize data"
+            >
+              <Shuffle className="w-4 h-4" /> New Data
+            </button>
+            <button
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50"
+              onClick={() => { setManualM(0); setManualB(0); setGdM(0); setGdB(0); setGdIter(0); setLossHistory([]); setLambda(0); }}
+              title="Reset parameters"
+            >
+              <RotateCcw className="w-4 h-4" /> Reset Params
+            </button>
+          </div>
+        </header>
+
+        {/* Top grid: Controls + Main Plot */}
+        <div className="grid grid-cols-12 gap-5">
+          <div className="col-span-12 lg:col-span-4 space-y-4">
+            <Section title="Data Playground" icon={Sliders} right={<Pill><GitCommitVertical className="w-3 h-3"/> seed {seed}</Pill>}>
+              <SliderRow label="Points" value={n} min={20} max={250} step={1} onChange={setN} />
+              <SliderRow label="x min" value={minX} min={-10} max={0} step={0.5} onChange={setMinX} />
+              <SliderRow label="x max" value={maxX} min={0} max={10} step={0.5} onChange={setMaxX} />
+              <div className="h-2" />
+              <SliderRow label="True slope (m*)" value={mTrue} min={-4} max={4} step={0.1} onChange={setMTrue} />
+              <SliderRow label="True intercept (b*)" value={bTrue} min={-6} max={6} step={0.1} onChange={setBTrue} />
+              <SliderRow label="Noise (σ)" value={noise} min={0} max={4} step={0.1} onChange={setNoise} />
+              <div className="flex items-center gap-2 mt-2">
+                <input id="outliers" type="checkbox" checked={withOutliers} onChange={(e) => setWithOutliers(e.target.checked)} />
+                <label htmlFor="outliers" className="text-sm text-slate-700">Add a few outliers</label>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Pill><span className="w-2 h-2 rounded-full inline-block bg-emerald-500"/> true line</Pill>
+                <Pill><span className="w-2 h-2 rounded-full inline-block bg-indigo-600"/> manual line</Pill>
+                <Pill><span className="w-2 h-2 rounded-full inline-block bg-rose-600"/> OLS line</Pill>
+                <Pill><span className="w-2 h-2 rounded-full inline-block bg-amber-600"/> GD line</Pill>
+              </div>
+            </Section>
+
+            <Section title="Fit by Hand (drag the sliders)" icon={Layers}>
+              <SliderRow label="Manual slope (m)" value={manualM} min={-6} max={6} step={0.05} onChange={setManualM} />
+              <SliderRow label="Manual intercept (b)" value={manualB} min={-10} max={10} step={0.05} onChange={setManualB} />
+              <div className="grid grid-cols-3 gap-3 mt-2">
+                <Stat label="MSE (manual)" value={manualMSE} />
+                <Stat label="R² (manual)" value={manualR2} />
+                <Stat label="R² (OLS)" value={olsR2} />
+              </div>
+            </Section>
+
+            <Section title="Regularization & Train/Test" icon={Settings}>
+              <SliderRow label="Ridge λ (on slope)" value={lambda} min={0} max={5} step={0.05} onChange={setLambda} />
+              <SliderRow label="Train split" value={split} min={0.5} max={0.95} step={0.01} onChange={setSplit} />
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <Stat label="MSE (train OLS)" value={trainMSE.toFixed(3)} />
+                <Stat label="MSE (test OLS)" value={testMSE.toFixed(3)} />
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Note: For demo, ridge penalizes the slope only; intercept is unpenalized.</p>
+            </Section>
+          </div>
+
+          <div className="col-span-12 lg:col-span-8">
+            <Section title="Data & Lines" icon={BarChart3} right={<div className="flex gap-2">
+              <Pill>m* {mTrue.toFixed(2)}</Pill>
+              <Pill>b* {bTrue.toFixed(2)}</Pill>
+            </div>}>
+              <div className="h-[380px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" dataKey="x" name="x" />
+                    <YAxis type="number" dataKey="y" name="y" />
+                    <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+                    <Legend />
+                    {/* 5 binned scatters for residual magnitude (manual fit) */}
+                    {[0,1,2,3,4].map((bin) => (
+                      <Scatter key={bin} name={`points (residual bin ${bin+1})`} data={manualBinned.filter(d => d.bin===bin)} fill={colorBins[bin]} />
+                    ))}
+                    {/* Lines */}
+                    <Line dataKey="true" data={linePoints} type="monotone" dot={false} stroke="#10b981" name="true line" />
+                    <Line dataKey="manual" data={linePoints} type="monotone" dot={false} stroke="#4f46e5" name="manual" />
+                    <Line dataKey="ols" data={linePoints} type="monotone" dot={false} stroke="#e11d48" name="OLS" />
+                    <Line dataKey="gd" data={linePoints} type="monotone" dot={false} stroke="#f59e0b" name="GD" />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Stat label="MSE (OLS)" value={olsMSE} />
+                <Stat label="R² (OLS)" value={olsR2} />
+                <Stat label="MSE (GD)" value={gdMSE} />
+                <Stat label={`GD iters`} value={gdIter} />
+              </div>
+            </Section>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mt-5">
+              <Section title="Loss Landscape vs slope m" icon={BarChart3}>
+                <div className="h-[260px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={landscape} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                      <defs>
+                        <linearGradient id="Jfill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#93c5fd" stopOpacity={0.6}/>
+                          <stop offset="100%" stopColor="#93c5fd" stopOpacity={0.05}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="m" />
+                      <YAxis />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="J" stroke="#3b82f6" fill="url(#Jfill)" name="Loss J(m)" />
+                      <ReferenceLine x={manualM} stroke="#4f46e5" label={{ value: "manual m", fill: "#4f46e5", position: "insideTopRight"}} />
+                      <ReferenceLine x={ols.m} stroke="#e11d48" label={{ value: "OLS m", fill: "#e11d48", position: "insideTopRight"}} />
+                      <ReferenceLine x={gdM} stroke="#f59e0b" label={{ value: "GD m", fill: "#f59e0b", position: "insideTopRight"}} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <SliderRow label="m min" value={mMin} min={-8} max={0} step={0.1} onChange={setMMin} />
+                  <SliderRow label="m max" value={mMax} min={0} max={8} step={0.1} onChange={setMMax} />
+                </div>
+              </Section>
+
+              <Section title="Gradient Descent Trainer" icon={Zap} right={
+                <div className="flex items-center gap-2">
+                  {!isRunning ? (
+                    <button className="px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-500 inline-flex items-center gap-2" onClick={() => setIsRunning(true)}><Play className="w-4 h-4"/> Run</button>
+                  ) : (
+                    <button className="px-3 py-1.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 inline-flex items-center gap-2" onClick={() => setIsRunning(false)}><Square className="w-4 h-4"/> Stop</button>
+                  )}
+                  <button className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50" onClick={() => stepGD(1)}>Step</button>
+                  <button className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50" onClick={() => stepGD(10)}>+10</button>
+                </div>
+              }>
+                <div className="grid grid-cols-2 gap-3">
+                  <SliderRow label="Learning rate" value={lr} min={0.001} max={0.5} step={0.001} onChange={setLr} />
+                  <SliderRow label="Ridge λ (GD)" value={lambda} min={0} max={5} step={0.05} onChange={setLambda} />
+                </div>
+                <div className="h-[200px] w-full mt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={lossHistory.map((J, i) => ({ iter: i + 1, J }))} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="iter" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="J" stroke="#f59e0b" dot={false} name="Loss per iter" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-3">
+                  <Stat label="m (GD)" value={gdM.toFixed(3)} />
+                  <Stat label="b (GD)" value={gdB.toFixed(3)} />
+                  <Stat label="MSE (GD)" value={gdMSE} />
+                </div>
+              </Section>
+            </div>
+
+            <div className="grid grid-cols-1 mt-5">
+              <Section title="Quick Quiz" icon={Sparkles}>
+                <div className="space-y-4">
+                  {questions.map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-slate-200 bg-white">
+                      <div className="font-medium mb-2">{idx + 1}. {item.q}</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {item.options.map((opt, j) => {
+                          const selected = answers[idx] === j;
+                          const isCorrect = item.a === j;
+                          const show = answers[idx] !== null;
+                          const base = "px-3 py-2 rounded-lg border text-sm text-left";
+                          let cls = base + " border-slate-200 hover:bg-slate-50";
+                          if (show) {
+                            if (selected && isCorrect) cls = base + " border-emerald-300 bg-emerald-50";
+                            else if (selected && !isCorrect) cls = base + " border-rose-300 bg-rose-50";
+                            else if (isCorrect) cls = base + " border-emerald-200";
+                          }
+                          return (
+                            <button key={j} className={cls}
+                              onClick={() => setAnswers((a) => { const b = [...a]; b[idx] = j; return b; })}>
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer / Tips */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="p-4 rounded-2xl bg-white/70 border border-slate-200">
+            <div className="font-semibold mb-1">Concepts you just touched</div>
+            <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+              <li>Ordinary Least Squares (closed-form)</li>
+              <li>Mean Squared Error & R²</li>
+              <li>Regularization (ridge-style slope penalty)</li>
+              <li>Gradient Descent dynamics & learning rate</li>
+              <li>Loss landscape intuition</li>
+              <li>Train/Test split & generalization</li>
+            </ul>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="p-4 rounded-2xl bg-white/70 border border-slate-200">
+            <div className="font-semibold mb-1">Try these experiments</div>
+            <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+              <li>Crank noise ↑ and watch R² drop.</li>
+              <li>Toggle outliers and see OLS sensitivity.</li>
+              <li>Set λ &gt; 0 and compare slopes (ridge effect).</li>
+              <li>Start GD at m=b=0; vary learning rate to see divergence.</li>
+              <li>Slide train split and compare train vs. test MSE.</li>
+            </ul>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="p-4 rounded-2xl bg-white/70 border border-slate-200">
+            <div className="font-semibold mb-1">Notes</div>
+            <p className="text-sm text-slate-700">For clarity, this demo applies ridge to the slope only and uses a simple b*(m) when plotting J(m). Those choices keep the visuals intuitive for first learning.</p>
+          </motion.div>
+        </div>
+
+        <div className="h-10" />
+      </div>
+    </div>
+  );
+}

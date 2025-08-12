@@ -1,0 +1,21 @@
+[project]
+name = "python-learning"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "EnkrateiaLucca", email = "lucasbnsoares@hotmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ipykernel>=6.30.1",
+    "jupyter>=1.1.1",
+    "notebook>=7.4.5",
+]
+
+[project.scripts]
+python-learning = "python_learning:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

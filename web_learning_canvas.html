@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Dev Learning Canvas</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #0b1220;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22d3ee;
+      --accent-2: #60a5fa;
+      --danger: #f87171;
+      --ok: #34d399;
+      --border: #1f2937;
+      --code: #0a0f1c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1200px 1200px at 20% -10%, #10203b 0%, var(--bg) 50%);
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100dvh;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #0f172a, #0b1325);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .title {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    .title .badge {
+      font-size: 12px;
+      color: var(--panel);
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button, select, input[type="text"] {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+
+    button.primary { background: linear-gradient(90deg, #0891b2, #2563eb); border-color: #1e40af; }
+    button.primary:hover { filter: brightness(1.05); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    input[type="checkbox"] { accent-color: var(--accent); }
+
+    main {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .left, .right {
+      display: grid;
+      gap: 12px;
+      grid-auto-rows: min-content;
+      overflow: hidden;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      min-height: 60px;
+    }
+
+    .panel h3 {
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      background: #0d162b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel .content { padding: 10px; }
+
+    .editor-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-bottom: 1px solid var(--border);
+    }
+    .editor-tab {
+      text-align: center;
+      padding: 8px 0;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      user-select: none;
+    }
+    .editor-tab.active { color: var(--text); border-bottom-color: var(--accent-2); }
+
+    .editor-area { display: none; }
+    .editor-area.active { display: block; }
+
+    textarea.code {
+      width: 100%;
+      height: 300px;
+      background: var(--code);
+      color: #e8ecf1;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+      padding: 10px;
+      resize: vertical;
+    }
+
+    .snippets {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .snippet {
+      padding: 8px;
+      border: 1px dashed var(--border);
+      background: #0c1427;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .snippet:hover { background: #0e1830; color: var(--text); border-style: solid; }
+
+    .preview-wrap {
+      display: grid;
+      grid-template-rows: 1fr minmax(80px, 200px);
+      height: 100%;
+    }
+
+    .iframe-wrap {
+      background: #0a1224;
+      border-top: 1px solid var(--border);
+    }
+
+    iframe#preview {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .console {
+      background: #0a0f1c;
+      border-top: 1px solid var(--border);
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      padding: 8px 10px;
+      line-height: 1.4;
+    }
+
+    .log { color: #d1fae5; }
+    .info { color: #bfdbfe; }
+    .warn { color: #fde68a; }
+    .error { color: #fecaca; }
+    .meta { color: var(--muted); }
+
+    footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      background: #0c1427;
+      font-size: 13px;
+    }
+
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .spacer { flex: 1; }
+    .small { font-size: 12px; color: var(--muted); }
+
+    @media (max-width: 1000px) {
+      main { grid-template-columns: 1fr; grid-auto-rows: min-content; }
+      .preview-wrap { grid-template-rows: 50vh minmax(100px, 200px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">
+        <span>Web Dev Learning Canvas</span>
+        <span class="badge">HTML • CSS • JS</span>
+      </div>
+      <div class="controls">
+        <input id="projectName" type="text" placeholder="Project name (e.g. my-landing)" />
+        <button id="saveBtn" title="Ctrl/Cmd+S">Save</button>
+        <button id="loadBtn">Load</button>
+      </div>
+      <div class="controls">
+        <select id="templateSelect" title="Start from a template">
+          <option value="blank">Template: Blank</option>
+          <option value="landing">Template: Landing</option>
+          <option value="todo">Template: Todo UI</option>
+          <option value="gallery">Template: Gallery</option>
+        </select>
+        <button id="applyTemplateBtn">Use Template</button>
+      </div>
+      <div class="controls">
+        <label class="small"><input id="autoRun" type="checkbox" checked /> Auto-run</label>
+        <button id="runBtn" class="primary" title="Ctrl/Cmd+Enter">Run ▶</button>
+      </div>
+      <div class="controls">
+        <button id="resetBtn" title="Reset editors to default">Reset</button>
+      </div>
+      <div class="spacer"></div>
+    </header>
+
+    <main>
+      <section class="left">
+        <div class="panel">
+          <div class="editor-tabs">
+            <div class="editor-tab active" data-target="html">HTML</div>
+            <div class="editor-tab" data-target="css">CSS</div>
+            <div class="editor-tab" data-target="js">JS</div>
+          </div>
+          <div class="content">
+            <div class="editor-area active" data-editor="html">
+              <textarea id="htmlEditor" class="code" spellcheck="false" placeholder="Write HTML here..."></textarea>
+              <div class="small" style="margin-top:6px">Tip: Click snippets below to insert at cursor.</div>
+            </div>
+            <div class="editor-area" data-editor="css">
+              <textarea id="cssEditor" class="code" spellcheck="false" placeholder="Write CSS here..."></textarea>
+            </div>
+            <div class="editor-area" data-editor="js">
+              <textarea id="jsEditor" class="code" spellcheck="false" placeholder="Write JS here..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>
+            Snippets
+            <span class="small">Click to insert into current editor</span>
+          </h3>
+          <div class="content">
+            <div class="snippets" id="snippets"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>
+            Learning Goals
+            <span class="small">Practice checklist</span>
+          </h3>
+          <div class="content">
+            <ul class="small" style="margin:0 0 6px 18px;">
+              <li>Create a header with navigation links</li>
+              <li>Style a responsive grid layout</li>
+              <li>Add a button that updates the DOM on click</li>
+              <li>Use a form and handle its submit event</li>
+              <li>Fetch JSON from a public API and render it</li>
+            </ul>
+            <div class="small">Tip: Start from a template, then modify and experiment.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="right">
+        <div class="panel preview-wrap">
+          <div class="iframe-wrap">
+            <iframe id="preview" title="Live Preview" sandbox="allow-scripts allow-same-origin"></iframe>
+          </div>
+          <div class="console" id="console"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Use Ctrl/Cmd+Enter to Run, Ctrl/Cmd+S to Save. The console shows logs, info, warnings, and errors from your code.
+    </footer>
+  </div>
+
+  <script>
+    const htmlEditor = document.getElementById('htmlEditor');
+    const cssEditor = document.getElementById('cssEditor');
+    const jsEditor = document.getElementById('jsEditor');
+    const runBtn = document.getElementById('runBtn');
+    const autoRun = document.getElementById('autoRun');
+    const iframe = document.getElementById('preview');
+    const consoleEl = document.getElementById('console');
+    const templateSelect = document.getElementById('templateSelect');
+    const applyTemplateBtn = document.getElementById('applyTemplateBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const loadBtn = document.getElementById('loadBtn');
+    const projectNameInput = document.getElementById('projectName');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const STORAGE_KEY_PREFIX = 'learning-canvas:';
+
+    const templates = {
+      blank: {
+        html: `\n<div class="container">\n  <h1>Hello, Web!</h1>\n  <p>Edit HTML, CSS, and JS, then click Run.</p>\n  <button id="btn">Click me</button>\n  <div id="output" class="box">Output shows here.</div>\n</div>\n`,
+        css: `\n:root {\n  --primary: #2563eb;\n  --bg: #0f172a;\n}\n\nbody {\n  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;\n  margin: 0;\n  padding: 2rem;\n}\n\n.container {\n  max-width: 720px;\n  margin: 0 auto;\n}\n\nh1 { color: var(--primary); }\n\n.box {\n  margin-top: 1rem;\n  border: 1px solid #eee;\n  padding: 1rem;\n  border-radius: 8px;\n}\n\nbutton {\n  background: var(--primary);\n  color: white;\n  border: 0;\n  padding: 0.6rem 0.9rem;\n  border-radius: 8px;\n}\n`,
+        js: `\nconsole.log('Welcome to the Learning Canvas!');\n\nconst btn = document.getElementById('btn');\nconst output = document.getElementById('output');\nbtn.addEventListener('click', () => {\n  const now = new Date().toLocaleTimeString();\n  output.textContent = 'Clicked at ' + now;\n  console.info('Button clicked');\n});\n`
+      },
+      landing: {
+        html: `\n<header class="site-header">\n  <nav class="nav">\n    <a href="#" class="logo">Acme</a>\n    <div class="links">\n      <a href="#features">Features</a>\n      <a href="#pricing">Pricing</a>\n      <a href="#contact">Contact</a>\n    </div>\n  </nav>\n  <div class="hero">\n    <h1>Build fast. Learn faster.</h1>\n    <p>The simplest playground for web development students.</p>\n    <button id="cta">Get Started</button>\n  </div>\n</header>\n<section id="features" class="grid">\n  <div class="card"><h3>HTML</h3><p>Structure your content with semantic elements.</p></div>\n  <div class="card"><h3>CSS</h3><p>Style layouts with modern techniques.</p></div>\n  <div class="card"><h3>JS</h3><p>Bring your page to life with interactivity.</p></div>\n</section>\n<footer class="site-footer">© 2025 Acme, Inc.</footer>\n`,
+        css: `\n* { box-sizing: border-box }\nbody { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system }\n.site-header {\n  background: linear-gradient(90deg, #0ea5e9, #6366f1);\n  color: white;\n  padding-bottom: 2rem;\n}\n.nav {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  padding: 1rem 2rem;\n}\n.nav a { color: white; text-decoration: none; margin: 0 0.6rem }\n.logo { font-weight: 800; letter-spacing: .06em }\n.hero {\n  padding: 2rem;\n  text-align: center;\n}\n.hero h1 { font-size: 2.2rem; margin-bottom: .5rem }\n.hero button {\n  background: #111827; color: white; border: 0; padding: .7rem 1rem; border-radius: 999px\n}\n.grid {\n  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;\n  padding: 2rem;\n}\n.card {\n  border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem; background: white\n}\n.site-footer { padding: 2rem; text-align: center; color: #6b7280 }\n`,
+        js: `\nconsole.log('Landing template ready');\nconst cta = document.getElementById('cta');\ncta.addEventListener('click', () => alert('Welcome! Start editing HTML, CSS, and JS.'))\n`
+      },
+      todo: {
+        html: `\n<div class="todo-app">\n  <h2>Todo</h2>\n  <form id="form">\n    <input id="todoInput" placeholder="Add a task" required />\n    <button>Add</button>\n  </form>\n  <ul id="list"></ul>\n</div>\n`,
+        css: `\nbody { font-family: system-ui; display: grid; place-items: center; min-height: 100vh; background: #f8fafc }\n.todo-app { background: white; padding: 1rem; border-radius: 12px; width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,.06) }\n#list { list-style: none; padding: 0; margin: .8rem 0 0 }\n#list li { display: flex; align-items: center; gap: .6rem; border: 1px solid #e5e7eb; border-radius: 8px; padding: .5rem .6rem; margin-bottom: .5rem }\n#list li button { margin-left: auto; background: #ef4444; color: white; border: 0; padding: .3rem .5rem; border-radius: 6px }\n`,
+        js: `\nconst form = document.getElementById('form');\nconst input = document.getElementById('todoInput');\nconst list = document.getElementById('list');\n\nform.addEventListener('submit', (e) => {\n  e.preventDefault();\n  const text = input.value.trim();\n  if (!text) return;\n  const li = document.createElement('li');\n  const cb = document.createElement('input'); cb.type = 'checkbox';\n  const span = document.createElement('span'); span.textContent = text;\n  const del = document.createElement('button'); del.textContent = 'Delete';\n  del.addEventListener('click', () => li.remove());\n  li.append(cb, span, del);\n  list.prepend(li);\n  input.value = '';\n});\n`
+      },
+      gallery: {
+        html: `\n<main class="gallery">\n  <h2>Image Grid</h2>\n  <div class="grid">\n    <img src="https://picsum.photos/seed/a/400/300" alt="a"/>\n    <img src="https://picsum.photos/seed/b/400/300" alt="b"/>\n    <img src="https://picsum.photos/seed/c/400/300" alt="c"/>\n    <img src="https://picsum.photos/seed/d/400/300" alt="d"/>\n    <img src="https://picsum.photos/seed/e/400/300" alt="e"/>\n    <img src="https://picsum.photos/seed/f/400/300" alt="f"/>\n  </div>\n</main>\n`,
+        css: `\n* { box-sizing: border-box }\nbody { margin: 0; font-family: ui-sans-serif; background: #0f172a; color: white }\n.gallery { padding: 2rem; }\n.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .8rem }\n.grid img { width: 100%; height: 180px; object-fit: cover; border-radius: 10px; transition: transform .15s ease }\n.grid img:hover { transform: scale(1.03) }\n`,
+        js: `\nconsole.info('Hover images to zoom');\n`
+      }
+    };
+
+    const snippetList = [
+      { label: 'HTML: Section', target: 'html', code: '<section>\n  <h2>Title</h2>\n  <p>Content...</p>\n</section>\n' },
+      { label: 'HTML: Button', target: 'html', code: '<button id="myBtn">Click</button>\n' },
+      { label: 'HTML: Form', target: 'html', code: '<form id="myForm">\n  <input name="name" placeholder="Your name" required />\n  <button>Submit</button>\n</form>\n' },
+      { label: 'CSS: Center', target: 'css', code: 'body { display: grid; place-items: center; min-height: 100vh }\n' },
+      { label: 'CSS: Card', target: 'css', code: '.card { padding: 1rem; border: 1px solid #e5e7eb; border-radius: 12px }\n' },
+      { label: 'JS: Click handler', target: 'js', code: 'document.getElementById("myBtn").addEventListener("click", () => alert("Clicked!"))\n' },
+      { label: 'JS: Fetch JSON', target: 'js', code: 'fetch("https://jsonplaceholder.typicode.com/todos/1").then(r=>r.json()).then(data=>console.log(data))\n' },
+    ];
+
+    function setEditors({ html = '', css = '', js = '' }) {
+      htmlEditor.value = html.trimStart();
+      cssEditor.value = css.trimStart();
+      jsEditor.value = js.trimStart();
+      scheduleRun();
+    }
+
+    function applyTemplate(name) {
+      const t = templates[name] || templates.blank;
+      setEditors(t);
+    }
+
+    function buildSrcDoc() {
+      const html = htmlEditor.value;
+      const css = cssEditor.value;
+      const js = jsEditor.value;
+
+      return `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <style>\n    html, body { margin: 0; }\n    ${css}\n  </style>\n</head>\n<body>\n  ${html}\n  <script>\n    (function(){\n      const send = (type, args) => parent.postMessage({ type, args }, '*');\n      const wrap = (fn, name) => function(){\n        try { send(name, Array.from(arguments)); } catch(e){}\n        return fn.apply(console, arguments);\n      };\n      console.log = wrap(console.log, 'log');\n      console.info = wrap(console.info, 'info');\n      console.warn = wrap(console.warn, 'warn');\n      console.error = wrap(console.error, 'error');\n      window.addEventListener('error', function(e){\n        try { send('error', [e.message + ' @' + (e.filename||'') + ':' + (e.lineno||'')]); } catch(_){}\n      });\n      window.addEventListener('unhandledrejection', function(e){\n        try { send('error', ['Unhandled promise rejection: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason)]); } catch(_){}\n      });\n    })();\n  <\/script>\n  <script>\n  try {\n${js.split('\n').map(line => '    ' + line).join('\n')}\n  } catch (e) { console.error(e && (e.stack || e.message) || e); }\n  <\/script>\n</body>\n</html>`;
+    }
+
+    function run() {
+      consoleEl.innerHTML = '';
+      const src = buildSrcDoc();
+      iframe.srcdoc = src;
+    }
+
+    function logToConsole(level, args) {
+      const line = document.createElement('div');
+      line.className = level;
+      const time = new Date().toLocaleTimeString();
+      const pretty = args.map(formatArg).join(' ');
+      line.innerHTML = `<span class="meta">[${time}]</span> ${escapeHtml(level.toUpperCase())}: ${pretty}`;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function formatArg(arg) {
+      try {
+        if (typeof arg === 'string') return escapeHtml(arg);
+        if (arg && typeof arg === 'object') return `<pre style="display:inline">${escapeHtml(JSON.stringify(arg, null, 2))}</pre>`;
+        return escapeHtml(String(arg));
+      } catch (_) {
+        return escapeHtml(String(arg));
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    }
+
+    function saveProject() {
+      const name = (projectNameInput.value || '').trim();
+      if (!name) { alert('Please provide a project name to save.'); return; }
+      const data = {
+        html: htmlEditor.value,
+        css: cssEditor.value,
+        js: jsEditor.value,
+        updatedAt: Date.now()
+      };
+      localStorage.setItem(STORAGE_KEY_PREFIX + name, JSON.stringify(data));
+      toast(`Saved \'${name}\'`);
+    }
+
+    function loadProject() {
+      const names = Object.keys(localStorage)
+        .filter(k => k.startsWith(STORAGE_KEY_PREFIX))
+        .map(k => k.slice(STORAGE_KEY_PREFIX.length));
+      if (!names.length) { alert('No saved projects.'); return; }
+      const choice = prompt('Enter project name to load:\n\n' + names.join('\n'));
+      if (!choice) return;
+      const raw = localStorage.getItem(STORAGE_KEY_PREFIX + choice);
+      if (!raw) { alert('Project not found.'); return; }
+      try {
+        const data = JSON.parse(raw);
+        projectNameInput.value = choice;
+        setEditors(data);
+        toast(`Loaded \'${choice}\'`);
+      } catch (e) {
+        alert('Failed to parse saved project.');
+      }
+    }
+
+    function toast(msg) {
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.position = 'fixed';
+      t.style.right = '14px';
+      t.style.bottom = '14px';
+      t.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+      t.style.color = 'white';
+      t.style.padding = '8px 12px';
+      t.style.borderRadius = '8px';
+      t.style.boxShadow = '0 8px 30px rgba(0,0,0,.25)';
+      t.style.zIndex = '9999';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1300);
+    }
+
+    // Tabs
+    document.querySelectorAll('.editor-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.editor-area').forEach(a => a.classList.remove('active'));
+        tab.classList.add('active');
+        const target = tab.getAttribute('data-target');
+        document.querySelector(`.editor-area[data-editor="${target}"]`).classList.add('active');
+      });
+    });
+
+    // Snippets
+    const snippetsEl = document.getElementById('snippets');
+    snippetsEl.innerHTML = '';
+    for (const sn of snippetList) {
+      const el = document.createElement('div');
+      el.className = 'snippet';
+      el.textContent = sn.label;
+      el.title = 'Insert into ' + sn.target.toUpperCase();
+      el.addEventListener('click', () => insertSnippet(sn));
+      snippetsEl.appendChild(el);
+    }
+
+    function insertSnippet(snippet) {
+      let editor = htmlEditor;
+      if (snippet.target === 'css') editor = cssEditor;
+      if (snippet.target === 'js') editor = jsEditor;
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const before = editor.value.slice(0, start);
+      const after = editor.value.slice(end);
+      editor.value = before + snippet.code + after;
+      editor.focus();
+      editor.selectionStart = editor.selectionEnd = before.length + snippet.code.length;
+      scheduleRun();
+    }
+
+    // Auto-run with debounce
+    let runTimer = null;
+    function scheduleRun() {
+      if (!autoRun.checked) return;
+      clearTimeout(runTimer);
+      runTimer = setTimeout(run, 300);
+    }
+
+    [htmlEditor, cssEditor, jsEditor].forEach(ed => {
+      ed.addEventListener('input', scheduleRun);
+    });
+
+    // Buttons and keyboard
+    runBtn.addEventListener('click', run);
+    applyTemplateBtn.addEventListener('click', () => applyTemplate(templateSelect.value));
+    resetBtn.addEventListener('click', () => applyTemplate('blank'));
+    saveBtn.addEventListener('click', saveProject);
+    loadBtn.addEventListener('click', loadProject);
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 's')) { e.preventDefault(); saveProject(); }
+    });
+
+    // Receive console messages from iframe
+    window.addEventListener('message', (event) => {
+      const { type, args } = event.data || {};
+      if (!type) return;
+      if ([ 'log', 'info', 'warn', 'error' ].includes(type)) {
+        logToConsole(type, args || []);
+      }
+    });
+
+    // Initialize
+    applyTemplate('blank');
+  </script>
+</body>
+</html>
