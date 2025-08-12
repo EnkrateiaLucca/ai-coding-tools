@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .upload-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-label {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 14px;
+        }
+
+        .file-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .ai-generate-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .ai-generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .ai-generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+
+        select, input[type="text"] {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+
+        .data-preview {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: #51cf66;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+        }
+
+        .ai-prompt-section {
+            margin-top: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+
+        .ai-prompt-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI Data Visualizer</h1>
+            <p>Upload data or generate synthetic datasets with AI</p>
+        </div>
+
+        <div class="control-panel">
+            <div class="upload-section">
+                <div class="file-input-wrapper">
+                    <input type="file" id="fileInput" class="file-input" accept=".csv,.json" />
+                    <label for="fileInput" class="file-label">📁 Upload CSV/JSON</label>
+                </div>
+                
+                <button id="aiGenerateBtn" class="ai-generate-btn">✨ AI Data Generate</button>
+                
+                <button id="exampleDataBtn" class="ai-generate-btn" style="background: linear-gradient(45deg, #26c6da, #00acc1);">📊 Example Data</button>
+                
+                <span id="fileName" style="color: #666; font-style: italic;"></span>
+            </div>
+
+            <div class="ai-prompt-section" id="aiPromptSection" style="display: none;">
+                <textarea 
+                    id="aiPrompt" 
+                    class="ai-prompt-input" 
+                    rows="3" 
+                    placeholder="Describe the data you want to generate (e.g., 'Generate sales data for 12 months with products and revenue')">
+                </textarea>
+                <button id="generateDataBtn" class="ai-generate-btn">Generate Data</button>
+            </div>
+
+            <div class="ai-prompt-section" id="exampleDataSection" style="display: none;">
+                <div class="control-group" style="margin-bottom: 15px;">
+                    <label for="exampleSelect">Choose Example Dataset</label>
+                    <select id="exampleSelect" style="width: 100%; margin-bottom: 10px;">
+                        <option value="">Select an example...</option>
+                        <option value="sales">Monthly Sales Data (JSON)</option>
+                        <option value="students">Student Grades (CSV)</option>
+                        <option value="stocks">Stock Performance (JSON)</option>
+                        <option value="weather">Weather Data (CSV)</option>
+                        <option value="ecommerce">E-commerce Metrics (JSON)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group" style="margin-bottom: 15px;">
+                    <label for="dataFormat">Data Format</label>
+                    <select id="dataFormat" style="width: 200px;">
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV</option>
+                    </select>
+                </div>
+                
+                <div class="control-group" style="margin-bottom: 15px;">
+                    <label for="exampleDataEditor">Edit Data (modify as needed)</label>
+                    <textarea 
+                        id="exampleDataEditor" 
+                        class="ai-prompt-input" 
+                        rows="12" 
+                        placeholder="Select an example dataset above to edit...">
+                    </textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="loadExampleBtn" class="ai-generate-btn">Load Data</button>
+                    <button id="resetExampleBtn" class="ai-generate-btn" style="background: linear-gradient(45deg, #ff7675, #e84393);">Reset</button>
+                </div>
+            </div>
+
+            <div class="chart-controls">
+                <div class="control-group">
+                    <label for="chartType">Chart Type</label>
+                    <select id="chartType">
+                        <option value="line">Line Chart</option>
+                        <option value="bar">Bar Chart</option>
+                        <option value="pie">Pie Chart</option>
+                        <option value="doughnut">Doughnut Chart</option>
+                        <option value="scatter">Scatter Plot</option>
+                        <option value="radar">Radar Chart</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="xAxis">X-Axis Column</label>
+                    <select id="xAxis"></select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="yAxis">Y-Axis Column</label>
+                    <select id="yAxis"></select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="chartTitle">Chart Title</label>
+                    <input type="text" id="chartTitle" placeholder="Enter chart title" />
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-wrapper">
+                <canvas id="myChart"></canvas>
+            </div>
+        </div>
+
+        <div class="data-preview">
+            <h3>Data Preview</h3>
+            <div id="dataPreview">No data loaded. Upload a file or generate synthetic data.</div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = [];
+        let currentChart = null;
+        let originalExampleData = {};
+
+        // Example datasets
+        const exampleDatasets = {
+            sales: {
+                json: `[
+  {"month": "January", "revenue": 45000, "units": 230, "product": "Laptops"},
+  {"month": "February", "revenue": 52000, "units": 280, "product": "Laptops"},
+  {"month": "March", "revenue": 48000, "units": 260, "product": "Laptops"},
+  {"month": "April", "revenue": 61000, "units": 310, "product": "Laptops"},
+  {"month": "May", "revenue": 59000, "units": 295, "product": "Laptops"},
+  {"month": "June", "revenue": 67000, "units": 340, "product": "Laptops"},
+  {"month": "July", "revenue": 71000, "units": 365, "product": "Laptops"},
+  {"month": "August", "revenue": 69000, "units": 350, "product": "Laptops"},
+  {"month": "September", "revenue": 64000, "units": 320, "product": "Laptops"},
+  {"month": "October", "revenue": 58000, "units": 290, "product": "Laptops"},
+  {"month": "November", "revenue": 73000, "units": 380, "product": "Laptops"},
+  {"month": "December", "revenue": 81000, "units": 420, "product": "Laptops"}
+]`,
+                csv: `month,revenue,units,product
+January,45000,230,Laptops
+February,52000,280,Laptops
+March,48000,260,Laptops
+April,61000,310,Laptops
+May,59000,295,Laptops
+June,67000,340,Laptops
+July,71000,365,Laptops
+August,69000,350,Laptops
+September,64000,320,Laptops
+October,58000,290,Laptops
+November,73000,380,Laptops
+December,81000,420,Laptops`
+            },
+            students: {
+                json: `[
+  {"name": "Alice", "math": 92, "science": 88, "english": 85, "grade": "A"},
+  {"name": "Bob", "math": 78, "science": 82, "english": 80, "grade": "B"},
+  {"name": "Charlie", "math": 85, "science": 90, "english": 87, "grade": "A"},
+  {"name": "Diana", "math": 73, "science": 76, "english": 82, "grade": "B"},
+  {"name": "Eva", "math": 95, "science": 94, "english": 91, "grade": "A"},
+  {"name": "Frank", "math": 68, "science": 71, "english": 75, "grade": "C"},
+  {"name": "Grace", "math": 89, "science": 86, "english": 88, "grade": "A"},
+  {"name": "Henry", "math": 76, "science": 79, "english": 77, "grade": "B"},
+  {"name": "Ivy", "math": 91, "science": 89, "english": 93, "grade": "A"},
+  {"name": "Jack", "math": 65, "science": 69, "english": 72, "grade": "C"}
+]`,
+                csv: `name,math,science,english,grade
+Alice,92,88,85,A
+Bob,78,82,80,B
+Charlie,85,90,87,A
+Diana,73,76,82,B
+Eva,95,94,91,A
+Frank,68,71,75,C
+Grace,89,86,88,A
+Henry,76,79,77,B
+Ivy,91,89,93,A
+Jack,65,69,72,C`
+            },
+            stocks: {
+                json: `[
+  {"symbol": "AAPL", "price": 175.50, "change": 2.30, "volume": 68920000, "market_cap": 2800000000000},
+  {"symbol": "GOOGL", "price": 142.80, "change": -1.20, "volume": 28450000, "market_cap": 1750000000000},
+  {"symbol": "MSFT", "price": 378.90, "change": 5.60, "volume": 31250000, "market_cap": 2820000000000},
+  {"symbol": "AMZN", "price": 148.70, "change": -0.80, "volume": 42180000, "market_cap": 1540000000000},
+  {"symbol": "TSLA", "price": 208.50, "change": 12.40, "volume": 95630000, "market_cap": 662000000000},
+  {"symbol": "META", "price": 318.20, "change": 4.90, "volume": 18970000, "market_cap": 810000000000},
+  {"symbol": "NVDA", "price": 467.30, "change": 8.20, "volume": 51240000, "market_cap": 1150000000000},
+  {"symbol": "NFLX", "price": 445.80, "change": -2.10, "volume": 3680000, "market_cap": 198000000000}
+]`,
+                csv: `symbol,price,change,volume,market_cap
+AAPL,175.50,2.30,68920000,2800000000000
+GOOGL,142.80,-1.20,28450000,1750000000000
+MSFT,378.90,5.60,31250000,2820000000000
+AMZN,148.70,-0.80,42180000,1540000000000
+TSLA,208.50,12.40,95630000,662000000000
+META,318.20,4.90,18970000,810000000000
+NVDA,467.30,8.20,51240000,1150000000000
+NFLX,445.80,-2.10,3680000,198000000000`
+            },
+            weather: {
+                json: `[
+  {"city": "New York", "temperature": 22, "humidity": 65, "rainfall": 3.2, "season": "Spring"},
+  {"city": "Los Angeles", "temperature": 28, "humidity": 55, "rainfall": 0.8, "season": "Spring"},
+  {"city": "Chicago", "temperature": 18, "humidity": 70, "rainfall": 4.1, "season": "Spring"},
+  {"city": "Houston", "temperature": 31, "humidity": 75, "rainfall": 2.9, "season": "Spring"},
+  {"city": "Phoenix", "temperature": 35, "humidity": 35, "rainfall": 0.3, "season": "Spring"},
+  {"city": "Philadelphia", "temperature": 21, "humidity": 68, "rainfall": 3.8, "season": "Spring"},
+  {"city": "San Antonio", "temperature": 29, "humidity": 72, "rainfall": 2.1, "season": "Spring"},
+  {"city": "San Diego", "temperature": 25, "humidity": 60, "rainfall": 1.2, "season": "Spring"},
+  {"city": "Dallas", "temperature": 27, "humidity": 67, "rainfall": 3.0, "season": "Spring"},
+  {"city": "San Jose", "temperature": 23, "humidity": 58, "rainfall": 1.5, "season": "Spring"}
+]`,
+                csv: `city,temperature,humidity,rainfall,season
+New York,22,65,3.2,Spring
+Los Angeles,28,55,0.8,Spring
+Chicago,18,70,4.1,Spring
+Houston,31,75,2.9,Spring
+Phoenix,35,35,0.3,Spring
+Philadelphia,21,68,3.8,Spring
+San Antonio,29,72,2.1,Spring
+San Diego,25,60,1.2,Spring
+Dallas,27,67,3.0,Spring
+San Jose,23,58,1.5,Spring`
+            },
+            ecommerce: {
+                json: `[
+  {"category": "Electronics", "sales": 125000, "orders": 1240, "avg_order": 101, "rating": 4.5},
+  {"category": "Clothing", "sales": 89000, "orders": 1680, "avg_order": 53, "rating": 4.2},
+  {"category": "Home & Garden", "sales": 76000, "orders": 950, "avg_order": 80, "rating": 4.3},
+  {"category": "Books", "sales": 42000, "orders": 2100, "avg_order": 20, "rating": 4.6},
+  {"category": "Sports", "sales": 67000, "orders": 890, "avg_order": 75, "rating": 4.1},
+  {"category": "Beauty", "sales": 58000, "orders": 1450, "avg_order": 40, "rating": 4.4},
+  {"category": "Toys", "sales": 51000, "orders": 720, "avg_order": 71, "rating": 4.0},
+  {"category": "Automotive", "sales": 94000, "orders": 420, "avg_order": 224, "rating": 4.2}
+]`,
+                csv: `category,sales,orders,avg_order,rating
+Electronics,125000,1240,101,4.5
+Clothing,89000,1680,53,4.2
+Home & Garden,76000,950,80,4.3
+Books,42000,2100,20,4.6
+Sports,67000,890,75,4.1
+Beauty,58000,1450,40,4.4
+Toys,51000,720,71,4.0
+Automotive,94000,420,224,4.2`
+            }
+        };
+
+        // Initialize after DOM and scripts load
+        window.addEventListener('load', function() {
+            document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+            document.getElementById('aiGenerateBtn').addEventListener('click', toggleAIPrompt);
+            document.getElementById('exampleDataBtn').addEventListener('click', toggleExampleData);
+            document.getElementById('generateDataBtn').addEventListener('click', generateSyntheticData);
+            document.getElementById('exampleSelect').addEventListener('change', loadExampleData);
+            document.getElementById('dataFormat').addEventListener('change', updateDataFormat);
+            document.getElementById('loadExampleBtn').addEventListener('click', processExampleData);
+            document.getElementById('resetExampleBtn').addEventListener('click', resetExampleData);
+            document.getElementById('chartType').addEventListener('change', updateChart);
+            document.getElementById('xAxis').addEventListener('change', updateChart);
+            document.getElementById('yAxis').addEventListener('change', updateChart);
+            document.getElementById('chartTitle').addEventListener('change', updateChart);
+        });
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').textContent = `Loaded: ${file.name}`;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                
+                if (file.name.endsWith('.csv')) {
+                    Papa.parse(content, {
+                        header: true,
+                        dynamicTyping: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            currentData = results.data;
+                            processData();
+                        }
+                    });
+                } else if (file.name.endsWith('.json')) {
+                    try {
+                        const jsonData = JSON.parse(content);
+                        currentData = Array.isArray(jsonData) ? jsonData : [jsonData];
+                        processData();
+                    } catch (error) {
+                        showError('Invalid JSON format');
+                    }
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function toggleAIPrompt() {
+            const section = document.getElementById('aiPromptSection');
+            const exampleSection = document.getElementById('exampleDataSection');
+            
+            section.style.display = section.style.display === 'none' ? 'block' : 'none';
+            if (section.style.display === 'block') {
+                exampleSection.style.display = 'none';
+            }
+        }
+
+        function toggleExampleData() {
+            const section = document.getElementById('exampleDataSection');
+            const aiSection = document.getElementById('aiPromptSection');
+            
+            section.style.display = section.style.display === 'none' ? 'block' : 'none';
+            if (section.style.display === 'block') {
+                aiSection.style.display = 'none';
+            }
+        }
+
+        function loadExampleData() {
+            const selected = document.getElementById('exampleSelect').value;
+            const format = document.getElementById('dataFormat').value;
+            
+            if (!selected) {
+                document.getElementById('exampleDataEditor').value = '';
+                return;
+            }
+            
+            const data = exampleDatasets[selected][format];
+            document.getElementById('exampleDataEditor').value = data;
+            originalExampleData[selected + '_' + format] = data;
+        }
+
+        function updateDataFormat() {
+            const selected = document.getElementById('exampleSelect').value;
+            if (selected) {
+                loadExampleData();
+            }
+        }
+
+        function processExampleData() {
+            const editor = document.getElementById('exampleDataEditor');
+            const format = document.getElementById('dataFormat').value;
+            const data = editor.value.trim();
+            
+            if (!data) {
+                showError('Please select and load example data first');
+                return;
+            }
+            
+            try {
+                if (format === 'json') {
+                    const jsonData = JSON.parse(data);
+                    currentData = Array.isArray(jsonData) ? jsonData : [jsonData];
+                } else {
+                    Papa.parse(data, {
+                        header: true,
+                        dynamicTyping: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            currentData = results.data;
+                            processData();
+                        }
+                    });
+                    return; // Papa.parse is async
+                }
+                
+                processData();
+                document.getElementById('fileName').textContent = `Loaded: Example Data (${document.getElementById('exampleSelect').selectedOptions[0].text})`;
+                document.getElementById('exampleDataSection').style.display = 'none';
+                showSuccess('Example data loaded successfully!');
+                
+            } catch (error) {
+                console.error('Error processing example data:', error);
+                showError('Invalid data format. Please check your syntax.');
+            }
+        }
+
+        function resetExampleData() {
+            const selected = document.getElementById('exampleSelect').value;
+            const format = document.getElementById('dataFormat').value;
+            
+            if (selected && originalExampleData[selected + '_' + format]) {
+                document.getElementById('exampleDataEditor').value = originalExampleData[selected + '_' + format];
+            } else if (selected) {
+                loadExampleData();
+            }
+        }
+
+        async function generateSyntheticData() {
+            const prompt = document.getElementById('aiPrompt').value.trim();
+            if (!prompt) {
+                showError('Please enter a description for the data you want to generate');
+                return;
+            }
+
+            const generateBtn = document.getElementById('generateDataBtn');
+            generateBtn.innerHTML = '<div class="loading"><div class="spinner"></div>Generating...</div>';
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch("https://api.anthropic.com/v1/messages", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        model: "claude-sonnet-4-20250514",
+                        max_tokens: 2000,
+                        messages: [
+                            { 
+                                role: "user", 
+                                content: `Generate synthetic data based on this request: "${prompt}". 
+
+                                Return ONLY a valid JSON array of objects with consistent column names. Each object should represent one data row. Make sure the data is realistic and suitable for visualization. Include at least 10-20 data points.
+
+                                Example format:
+                                [
+                                  {"month": "January", "sales": 1200, "product": "Widget A"},
+                                  {"month": "February", "sales": 1350, "product": "Widget A"}
+                                ]
+
+                                DO NOT include any text outside the JSON array.`
+                            }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                let responseText = data.content[0].text;
+                
+                // Clean up the response to extract JSON
+                responseText = responseText.replace(/```json\s?/g, "").replace(/```\s?/g, "").trim();
+                
+                const syntheticData = JSON.parse(responseText);
+                
+                if (Array.isArray(syntheticData) && syntheticData.length > 0) {
+                    currentData = syntheticData;
+                    processData();
+                    showSuccess('Synthetic data generated successfully!');
+                    document.getElementById('fileName').textContent = 'Generated: AI Synthetic Data';
+                    document.getElementById('aiPromptSection').style.display = 'none';
+                } else {
+                    throw new Error('Generated data is not in the expected format');
+                }
+                
+            } catch (error) {
+                console.error('Error generating synthetic data:', error);
+                showError('Failed to generate synthetic data. Please try a different description.');
+            } finally {
+                generateBtn.innerHTML = 'Generate Data';
+                generateBtn.disabled = false;
+            }
+        }
+
+        function processData() {
+            if (!currentData || currentData.length === 0) return;
+
+            // Get column names
+            const columns = Object.keys(currentData[0]);
+            
+            // Populate dropdowns
+            populateDropdown('xAxis', columns);
+            populateDropdown('yAxis', columns);
+            
+            // Set default values
+            document.getElementById('xAxis').value = columns[0];
+            document.getElementById('yAxis').value = columns[1] || columns[0];
+            
+            // Show data preview
+            showDataPreview();
+            
+            // Create initial chart
+            updateChart();
+        }
+
+        function populateDropdown(id, options) {
+            const select = document.getElementById(id);
+            select.innerHTML = '';
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                select.appendChild(optionElement);
+            });
+        }
+
+        function showDataPreview() {
+            const preview = document.getElementById('dataPreview');
+            if (currentData.length === 0) {
+                preview.innerHTML = 'No data available';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.className = 'data-table';
+            
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            Object.keys(currentData[0]).forEach(key => {
+                const th = document.createElement('th');
+                th.textContent = key;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Create body (show first 10 rows)
+            const tbody = document.createElement('tbody');
+            currentData.slice(0, 10).forEach(row => {
+                const tr = document.createElement('tr');
+                Object.values(row).forEach(value => {
+                    const td = document.createElement('td');
+                    td.textContent = value;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            
+            preview.innerHTML = `<p><strong>Total rows:</strong> ${currentData.length}</p>`;
+            preview.appendChild(table);
+            
+            if (currentData.length > 10) {
+                const moreInfo = document.createElement('p');
+                moreInfo.textContent = `... and ${currentData.length - 10} more rows`;
+                moreInfo.style.fontStyle = 'italic';
+                moreInfo.style.color = '#666';
+                preview.appendChild(moreInfo);
+            }
+        }
+
+        function updateChart() {
+            if (!currentData || currentData.length === 0) return;
+            
+            // Check if Chart.js is loaded
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js not loaded yet');
+                return;
+            }
+
+            const chartType = document.getElementById('chartType').value;
+            const xColumn = document.getElementById('xAxis').value;
+            const yColumn = document.getElementById('yAxis').value;
+            const title = document.getElementById('chartTitle').value;
+
+            if (currentChart) {
+                currentChart.destroy();
+            }
+
+            const ctx = document.getElementById('myChart').getContext('2d');
+            
+            let chartData;
+            let chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: !!title,
+                        text: title,
+                        font: { size: 18 }
+                    },
+                    legend: {
+                        display: true
+                    }
+                }
+            };
+
+            if (['pie', 'doughnut'].includes(chartType)) {
+                // Aggregate data for pie/doughnut charts
+                const aggregated = {};
+                currentData.forEach(row => {
+                    const key = row[xColumn];
+                    const value = parseFloat(row[yColumn]) || 0;
+                    aggregated[key] = (aggregated[key] || 0) + value;
+                });
+
+                chartData = {
+                    labels: Object.keys(aggregated),
+                    datasets: [{
+                        data: Object.values(aggregated),
+                        backgroundColor: generateColors(Object.keys(aggregated).length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                };
+            } else {
+                const labels = currentData.map(row => row[xColumn]);
+                const data = currentData.map(row => parseFloat(row[yColumn]) || 0);
+
+                chartData = {
+                    labels: labels,
+                    datasets: [{
+                        label: yColumn,
+                        data: data,
+                        backgroundColor: chartType === 'line' ? 'rgba(102, 126, 234, 0.1)' : generateColors(1)[0],
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2,
+                        tension: chartType === 'line' ? 0.4 : 0,
+                        fill: chartType === 'line'
+                    }]
+                };
+
+                if (chartType !== 'radar') {
+                    chartOptions.scales = {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: yColumn
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: xColumn
+                            }
+                        }
+                    };
+                }
+            }
+
+            try {
+                currentChart = new Chart(ctx, {
+                    type: chartType,
+                    data: chartData,
+                    options: chartOptions
+                });
+            } catch (error) {
+                console.error('Error creating chart:', error);
+                showError('Error creating chart. Please try again.');
+            }
+        }
+
+        function generateColors(count) {
+            const colors = [
+                '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7',
+                '#dda0dd', '#98d8c8', '#f7dc6f', '#bb8fce', '#85c1e9'
+            ];
+            
+            const result = [];
+            for (let i = 0; i < count; i++) {
+                result.push(colors[i % colors.length]);
+            }
+            return result;
+        }
+
+        function showError(message) {
+            const existingError = document.querySelector('.error');
+            if (existingError) existingError.remove();
+            
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            document.querySelector('.control-panel').appendChild(errorDiv);
+            
+            setTimeout(() => errorDiv.remove(), 5000);
+        }
+
+        function showSuccess(message) {
+            const existingSuccess = document.querySelector('.success');
+            if (existingSuccess) existingSuccess.remove();
+            
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success';
+            successDiv.textContent = message;
+            document.querySelector('.control-panel').appendChild(successDiv);
+            
+            setTimeout(() => successDiv.remove(), 5000);
+        }
+    </script>
+</body>
+</html>
